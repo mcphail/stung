@@ -6,7 +6,12 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <pthread.h>
 
+pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
+char *directory;
+
+/*
 int main()
 {
 	int server_sockfd, client_sockfd;
@@ -67,4 +72,93 @@ int main()
 			}
 		}
 	}
+}
+*/
+
+void usage(char *progname);
+int dir_poll();
+void *udp_server();
+void *tcp_server();
+void *poll_thread();
+
+int main(int argc, char *argv[])
+{
+	pthread_t poll_t, udp_t, tcp_t;
+	int ret_poll, ret_udp, ret_tcp;
+
+	if (argc != 2) usage(argv[0]);
+
+	/*
+	 * TODO: implement check on valid directory passed as argv[1]
+	 */
+	directory = argv[1];
+	printf("Polling %s at start-up\n", directory);
+	if (dir_poll()) {
+		printf("Failed to poll %s\n", directory);
+		exit(EXIT_FAILURE);
+	}
+
+	/* Start threads */
+	if (ret_udp = pthread_create(&udp_t, NULL, udp_server, NULL)) {
+		printf("Failure in UDP thread\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (ret_tcp = pthread_create(&tcp_t, NULL, tcp_server, NULL)) {
+		printf("Failure in TCP thread\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (ret_poll = pthread_create(&tcp_t, NULL, poll_thread, NULL)) {
+		printf("Failure in directory polling thread\n");
+		exit(EXIT_FAILURE);
+	}
+
+	printf("stung appears to have started successfully\n");
+	
+	pthread_join(udp_t, NULL);
+	pthread_join(tcp_t, NULL);
+	pthread_join(poll_t, NULL);
+
+	exit(EXIT_SUCCESS);
+}
+
+void usage(char *progname)
+{
+	printf("Usage: %s <directory-to-watch>\n", progname);
+	exit(EXIT_FAILURE);
+}
+
+void *poll_thread()
+{
+	while(1) {
+		int result = 0;
+		pthread_mutex_lock(&file_mutex);
+		result = dir_poll();
+		pthread_mutex_unlock(&file_mutex);
+		if (result) break;
+		sleep(3600);
+	}
+
+	printf("Polling has encountered an error and has terminated\n");
+}
+
+int dir_poll()
+{
+	/*
+	 * TODO: something useful
+	 */
+	printf("dir_poll called\n");
+
+	return 0;
+}
+
+void *udp_server()
+{
+	printf("udp_server thread ok\n");
+}
+
+void *tcp_server()
+{
+	printf("tcp_server thread ok\n");
 }

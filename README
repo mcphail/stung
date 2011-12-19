@@ -4,12 +4,13 @@ allow clients to check whether updates are available for the guideline list and
 serve those guidelines to the client.
 
 When started, stung will open a UDP and TCP socket on port 14935. Clients can
-send a datagram containing the client version number and a datagram reply will
-be sent with a hash of the contents of the most up-to-date version of the
-guidelines list. If this does not match the value stored on the client, the
-client should then negotiate a stream connection with stung, ask for the
-relevant file and download. If the client requests the wrong file the
-connection will be closed by stung.
+send a datagram containing the client version number as 3 zero-padded digits
+and a datagram reply will be sent with a hash of the contents of the most
+up-to-date version of the guidelines list. If this does not match the value
+stored on the client, the client should then negotiate a stream connection with
+stung, ask for the relevant file ("GET vvvhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
+and download. If the client requests the wrong file the connection will be
+closed by stung.
 
 Periodically, stung will poll a directory looking for updated guidance lists.
 The lists are expected to be gzipped xml files following a strict naming
@@ -26,7 +27,10 @@ files.
 
 On the occasions where a file has been updated, the old one removed and the
 directory has not yet been polled, stung will report the old version in the
-datagram
+datagram. When the stream request is made, stung will close the connection as
+the requested file will not exist. The client should send a datagram of "POL"
+to request a repoll and repeat the initial datagram in 30 seconds. All "POL"
+datagrams will be logged.
 
 Usage:
 	stung <directory-to-watch>
