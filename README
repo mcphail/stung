@@ -1,0 +1,33 @@
+stung is the Server for Transmitting Updated Nice Guidelines, designed to work
+as a back-end for the Nice Guidelines app from openhealthcare.org. It will
+allow clients to check whether updates are available for the guideline list and
+serve those guidelines to the client.
+
+When started, stung will open a UDP and TCP socket on port 14935. Clients can
+send a datagram containing the client version number and a datagram reply will
+be sent with a hash of the contents of the most up-to-date version of the
+guidelines list. If this does not match the value stored on the client, the
+client should then negotiate a stream connection with stung, ask for the
+relevant file and download. If the client requests the wrong file the
+connection will be closed by stung.
+
+Periodically, stung will poll a directory looking for updated guidance lists.
+The lists are expected to be gzipped xml files following a strict naming
+convention:
+
+- vvvhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh.gz
+
+...where vvv is the zero-padded decimal version of the oldest client which can
+interpret the file and hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh is the MD5 hash of the
+file contents. If there are 2 or more files with the same vvv prefix stung will
+only recognize the first by alphanumeric order. As this may not be the newest
+file, it is the responsibility of the scraper routine to clear up obsolete
+files.
+
+On the occasions where a file has been updated, the old one removed and the
+directory has not yet been polled, stung will report the old version in the
+datagram
+
+Usage:
+	stung <directory-to-watch>
+
