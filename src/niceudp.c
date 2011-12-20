@@ -9,6 +9,8 @@
 #include <pthread.h>
 #include <string.h>
 
+#define UDP_CHALL_SIZE 3
+
 pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t ll_mutex = PTHREAD_MUTEX_INITIALIZER;
 char *directory;
@@ -188,7 +190,37 @@ int dir_poll()
 
 void *udp_server()
 {
+	int server_fd, client_fd;
+	socklen_t server_len, client_len;
+	struct sockaddr_in server_ad, client_ad;
+	ssize_t result;
+	struct guideline *gp;
+	char chall[UDP_CHALL_SIZE];
+
 	printf("udp_server thread ok\n");
+
+	server_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (server_fd < 0) {
+		printf("Failed to set udp socket\n");
+		perror("server_fd");
+		exit(EXIT_FAILURE);
+	}
+	server_ad.sin_family = AF_INET;
+	server_ad.sin_addr.s_addr = htonl(INADDR_ANY);
+	server_ad.sin_port = htons(14935);
+	server_len = sizeof(server_ad);
+	if ((bind(server_fd, (struct sockaddr *)&server_ad, server_len)) < 0) {
+		printf("Failed to bind udp socket\n");
+		perror("server_fd");
+		exit(EXIT_FAILURE);
+	}
+
+	for (;;) {
+		client_len = sizeof(client_ad);
+		result = recvfrom(server_fd, chall, UDP_CHALL_SIZE, 0,
+				(struct sockaddr *) &client_ad, &client_len);
+		if (result != 3) continue;
+	}
 }
 
 void *tcp_server()
@@ -204,7 +236,10 @@ void clear_list()
 	while(p) {
 		struct guideline* old_p = p;
 		p = old_p->next;
-		if (p) free(old_p);
+		if (p) {
+			free(old_p->blob);
+			free(old_p);
+		}
 	}
 }
 
