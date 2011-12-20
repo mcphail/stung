@@ -10,6 +10,7 @@
 #include <string.h>
 
 #define UDP_CHALL_SIZE 3
+#define UDP_RESP_SIZE 32
 
 pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t ll_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -193,9 +194,11 @@ void *udp_server()
 	int server_fd, client_fd;
 	socklen_t server_len, client_len;
 	struct sockaddr_in server_ad, client_ad;
-	ssize_t result;
+	ssize_t transmitted;
+	int result;
 	struct guideline *gp;
-	char chall[UDP_CHALL_SIZE];
+	char chall[UDP_CHALL_SIZE + 1];
+	char resp[UDP_RESP_SIZE + 1];
 
 	printf("udp_server thread ok\n");
 
@@ -215,11 +218,47 @@ void *udp_server()
 		exit(EXIT_FAILURE);
 	}
 
+	chall[UDP_CHALL_SIZE] = 0;
 	for (;;) {
 		client_len = sizeof(client_ad);
-		result = recvfrom(server_fd, chall, UDP_CHALL_SIZE, 0,
+		transmitted = recvfrom(server_fd, chall, UDP_CHALL_SIZE, 0,
 				(struct sockaddr *) &client_ad, &client_len);
-		if (result != 3) continue;
+		if (transmitted != 3) {
+			printf("Failed udp connection\n");
+			continue;
+		}
+
+		result = (int) strtod(chall, NULL);
+		result = abs(result);
+		if ((!result) || (result > 999)) {
+			printf("Did not receive number challenge: %s\n", chall);
+			continue;
+		}
+		printf("Received %d\n", result);
+
+		pthread_mutex_lock(&ll_mutex);
+		gp = start_g.next;
+		if (gp == &end_g) {
+			printf("Empty guideline list\n");
+			strncpy(resp, "No guidelines found",
+					UDP_RESP_SIZE +1);
+		}
+		else {
+			while (!(gp->prev->version <= gp->version) &&
+				(gp->next->version > gp->version)) {
+			gp = gp->next;
+			}
+			strncpy(resp, gp->hash, UDP_RESP_SIZE +1);
+		}
+		pthread_mutex_unlock(&ll_mutex);
+
+		client_fd = socket(AF_INET, SOCK_DGRAM, 0);
+		if(sendto(client_fd, resp, UDP_RESP_SIZE, 0,
+				(struct sockaddr *)&client_ad, 
+				client_len) != UDP_RESP_SIZE) {
+			printf("Failed to send udp response correctly\n");
+			perror("sendto");
+		}
 	}
 }
 
