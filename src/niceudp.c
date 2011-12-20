@@ -7,9 +7,20 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <string.h>
 
 pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t ll_mutex = PTHREAD_MUTEX_INITIALIZER;
 char *directory;
+
+struct guideline {
+	int version;
+	void *blob;
+	unsigned long length;
+	char hash[33];
+	struct guideline *next;
+	struct guideline *prev;
+} start_g, end_g;
 
 /*
 int main()
@@ -81,35 +92,54 @@ void *udp_server();
 void *tcp_server();
 void *poll_thread();
 
+void clear_list();
+
 int main(int argc, char *argv[])
 {
 	pthread_t poll_t, udp_t, tcp_t;
 	int ret_poll, ret_udp, ret_tcp;
+
 
 	if (argc != 2) usage(argv[0]);
 
 	/*
 	 * TODO: implement check on valid directory passed as argv[1]
 	 */
+
+	/* Initialise linked list */
+	start_g.version = 0;
+	start_g.blob = NULL;
+	start_g.length = 0;
+	start_g.next = &end_g;
+	start_g.prev = NULL;
+
+	end_g.version = 1000;
+	end_g.blob = NULL;
+	end_g.length = 0;
+	end_g.next = NULL;
+	end_g.prev = &start_g;
+
 	directory = argv[1];
+
 	printf("Polling %s at start-up\n", directory);
 	if (dir_poll()) {
 		printf("Failed to poll %s\n", directory);
 		exit(EXIT_FAILURE);
 	}
 
+
 	/* Start threads */
-	if (ret_udp = pthread_create(&udp_t, NULL, udp_server, NULL)) {
+	if ((ret_udp = pthread_create(&udp_t, NULL, udp_server, NULL))) {
 		printf("Failure in UDP thread\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (ret_tcp = pthread_create(&tcp_t, NULL, tcp_server, NULL)) {
+	if ((ret_tcp = pthread_create(&tcp_t, NULL, tcp_server, NULL))) {
 		printf("Failure in TCP thread\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (ret_poll = pthread_create(&tcp_t, NULL, poll_thread, NULL)) {
+	if ((ret_poll = pthread_create(&poll_t, NULL, poll_thread, NULL))) {
 		printf("Failure in directory polling thread\n");
 		exit(EXIT_FAILURE);
 	}
@@ -148,6 +178,9 @@ int dir_poll()
 	/*
 	 * TODO: something useful
 	 */
+	pthread_mutex_lock(&ll_mutex);
+	clear_list();
+	pthread_mutex_unlock(&ll_mutex);
 	printf("dir_poll called\n");
 
 	return 0;
@@ -161,4 +194,44 @@ void *udp_server()
 void *tcp_server()
 {
 	printf("tcp_server thread ok\n");
+}
+
+/* Please lock ll_mutex before calling this */
+void clear_list()
+{
+	struct guideline* p = start_g.next;
+
+	while(p) {
+		struct guideline* old_p = p;
+		p = old_p->next;
+		if (p) free(old_p);
+	}
+}
+
+/* Please lock ll_mutex before calling this */
+int add_guideline(int version, void *blob, unsigned long length, char *hash)
+{
+	struct guideline *p,*i;
+
+	i = &start_g;
+
+	while(!((i->version < version) && (i->next->version > version))) {
+		if(i->version == version) break;
+		i = i->next;
+	}
+
+	if((p = malloc(sizeof(struct guideline)))==NULL) {
+		printf("Failed to allocate memory\n");
+		printf("I do not know what to do, so terminating\n");
+		exit(EXIT_FAILURE);
+	}
+
+	p->version = version;
+	p->blob = blob;
+	p->length = length;
+	strncpy(p->hash, hash, 33);
+	p->next = i;
+	p->prev = i->prev;
+	p->prev->next = p;
+	i->prev = p;
 }
