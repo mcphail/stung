@@ -30,7 +30,7 @@
 
 #define UDP_CHALL_SIZE 3
 #define UDP_RESP_SIZE 32
-#define TCP_READBUF_SIZE 40
+#define TCP_READBUF_SIZE 37
 
 pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t ll_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -257,6 +257,8 @@ void *tcp_server()
 	}
 
 	for (;;) {
+		char *index;
+
 		client_len = sizeof(client_ad);
 		client_fd = accept(server_fd, (struct sockaddr *)&client_ad,
 				&client_len);
@@ -273,6 +275,14 @@ void *tcp_server()
 			continue;
 		}
 
+		index = strstr(readbuf, "GET ");
+		if (index != readbuf) {
+			printf("TCP client did not request a GET\n");
+			close(client_fd);
+			continue;
+		}
+		index +=4;
+		printf("Read %s\n", index);
 	}
 }
 

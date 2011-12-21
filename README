@@ -8,9 +8,9 @@ send a datagram containing the client version number as 3 zero-padded digits
 and a datagram reply will be sent with a hash of the contents of the most
 up-to-date version of the guidelines list. If this does not match the value
 stored on the client, the client should then negotiate a stream connection with
-stung, ask for the relevant file ("GET vvvhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
-and download. If the client requests the wrong file the connection will be
-closed by stung.
+stung, ask for the relevant file ("GET hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh") and
+download. If the client requests the wrong file the connection will be closed
+by stung.
 
 Periodically, stung will poll a directory looking for updated guidance lists.
 The lists are expected to be gzipped xml files following a strict naming
