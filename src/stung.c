@@ -30,6 +30,7 @@
 
 #define UDP_CHALL_SIZE 3
 #define UDP_RESP_SIZE 32
+#define TCP_READBUF_SIZE 40
 
 pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t ll_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -43,70 +44,6 @@ struct guideline {
 	struct guideline *next;
 	struct guideline *prev;
 } start_g, end_g;
-
-/*
-int main()
-{
-	int server_sockfd, client_sockfd;
-	int server_len, client_len;
-	struct sockaddr_in server_address;
-	struct sockaddr_in client_address;
-	int result;
-	fd_set readfds, testfds;
-
-	server_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	server_address.sin_family = AF_INET;
-	server_address.sin_addr.s_addr = htonl(INADDR_ANY);
-	server_address.sin_port = htons(9734);
-	server_len = sizeof(server_address);
-
-	bind(server_sockfd, (struct sockaddr *)&server_address, server_len);
-
-
-	FD_ZERO(&readfds);
-	FD_SET(server_sockfd, &readfds);
-
-	while(1) {
-		char ch;
-		int fd;
-		int nread;
-
-		testfds = readfds;
-
-		printf("server waiting\n");
-		result = select(FD_SETSIZE, &testfds, (fd_set *)0,
-				(fd_set *)0,
-				(struct timeval *)0);
-		
-		if(result < 1) {
-			perror("nmpserver");
-			exit(1);
-		}
-
-		for(fd = 0; fd < FD_SETSIZE; fd++) {
-			if(FD_ISSET(fd,&testfds)) {
-				if(fd == server_sockfd) {
-					client_len = sizeof(client_address);
-					client_sockfd = accept(server_sockfd,
-							(struct sockaddr *)&client_address,
-							&client_len);
-					FD_SET(client_sockfd, &readfds);
-					printf("adding client on fd %d\n",
-							client_sockfd);
-				}
-				else {
-					read(fd, &ch, 1);
-					sleep(5);
-					printf("serving client on fd %d\n",
-							fd);
-					ch++;
-					write(fd, &ch, 1);
-				}
-			}
-		}
-	}
-}
-*/
 
 void usage(char *progname);
 int dir_poll();
@@ -219,14 +156,13 @@ void *udp_server()
 	char chall[UDP_CHALL_SIZE + 1];
 	char resp[UDP_RESP_SIZE + 1];
 
-	printf("udp_server thread ok\n");
-
 	server_fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (server_fd < 0) {
 		printf("Failed to set udp socket\n");
 		perror("server_fd");
 		exit(EXIT_FAILURE);
 	}
+	memset(&server_ad, 0, sizeof(struct sockaddr_in));
 	server_ad.sin_family = AF_INET;
 	server_ad.sin_addr.s_addr = htonl(INADDR_ANY);
 	server_ad.sin_port = htons(14935);
@@ -247,7 +183,7 @@ void *udp_server()
 			continue;
 		}
 
-		result = (int) strtod(chall, NULL);
+		result = atoi(chall);
 		result = abs(result);
 		if ((!result) || (result > 999)) {
 			printf("Did not receive number challenge: %s\n", chall);
@@ -283,7 +219,55 @@ void *udp_server()
 
 void *tcp_server()
 {
-	printf("tcp_server thread ok\n");
+	int server_fd, client_fd;
+	socklen_t server_len, client_len;
+	struct sockaddr_in server_ad, client_ad;
+	ssize_t transmitted;
+	struct guideline *gp;
+	char readbuf[TCP_READBUF_SIZE];
+	ssize_t nread;
+
+	server_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (server_fd < 0) {
+		printf("Failed to set up udp socket\n");
+		perror("server_fd");
+		exit(EXIT_FAILURE);
+	}
+
+	memset(&server_ad, 0, sizeof(struct sockaddr_in));
+	server_ad.sin_family = AF_INET;
+	server_ad.sin_addr.s_addr = htonl(INADDR_ANY);
+	server_ad.sin_port = htons(14935);
+	server_len = sizeof(server_ad);
+	if((bind(server_fd, (struct sockaddr *)&server_ad, server_len)) < 0) {
+		printf("Failed to bind tcp socket\n");
+		perror("server_fd");
+		exit(EXIT_FAILURE);
+	}
+	if (listen(server_fd, 5) < 0) {
+		printf("Failed to set listen backlog\n");
+		perror("server_fd");
+		exit(EXIT_FAILURE);
+	}
+
+	for (;;) {
+		client_len = sizeof(client_ad);
+		client_fd = accept(server_fd, (struct sockaddr *)&client_ad,
+				&client_len);
+		if (client_fd < 0) {
+			printf("Error connecting\n");
+			continue;
+		}
+
+		memset(readbuf, 0, TCP_READBUF_SIZE);
+		nread = read(client_fd, readbuf, TCP_READBUF_SIZE -1);
+		if (nread != (TCP_READBUF_SIZE -1)) {
+			printf("Failed to read from client\n");
+			close(client_fd);
+			continue;
+		}
+
+	}
 }
 
 /* Please lock ll_mutex before calling this */
