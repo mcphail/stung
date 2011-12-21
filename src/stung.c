@@ -208,6 +208,11 @@ void *udp_server()
 		pthread_mutex_unlock(&ll_mutex);
 
 		client_fd = socket(AF_INET, SOCK_DGRAM, 0);
+		if (client_fd < 0) {
+			printf("Failed to create socket for udp client\n");
+			perror("client_fd");
+			continue;
+		}
 		if(sendto(client_fd, resp, UDP_RESP_SIZE, 0,
 				(struct sockaddr *)&client_ad, 
 				client_len) != UDP_RESP_SIZE) {
