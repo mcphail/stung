@@ -214,6 +214,7 @@ void *udp_server()
 			printf("Failed to send udp response correctly\n");
 			perror("sendto");
 		}
+		close(client_fd);
 	}
 }
 

@@ -25,13 +25,6 @@ only recognize the first by alphanumeric order. As this may not be the newest
 file, it is the responsibility of the scraper routine to clear up obsolete
 files.
 
-On the occasions where a file has been updated, the old one removed and the
-directory has not yet been polled, stung will report the old version in the
-datagram. When the stream request is made, stung will close the connection as
-the requested file will not exist. The client should send a datagram of "POL"
-to request a repoll and repeat the initial datagram in 30 seconds. All "POL"
-datagrams will be logged.
-
 Usage:
 	stung <directory-to-watch>
 
