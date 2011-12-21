@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <string.h>
+#include <dirent.h>
 
 #define UDP_CHALL_SIZE 3
 #define UDP_RESP_SIZE 32
@@ -46,12 +47,13 @@ struct guideline {
 } start_g, end_g;
 
 void usage(char *progname);
-int dir_poll();
+int dir_poll(const char *d_name);
 void *udp_server();
 void *tcp_server();
 void *poll_thread();
-
+struct guideline *get_guideline_by_hash(const char *hash);
 void clear_list();
+int valid_filename(const char* filename);
 
 int main(int argc, char *argv[])
 {
@@ -66,6 +68,8 @@ int main(int argc, char *argv[])
 	 */
 
 	/* Initialise linked list */
+	memset(&start_g, 0, sizeof(struct guideline));
+	memset(&end_g, 0, sizeof(struct guideline));
 	start_g.version = 0;
 	start_g.blob = NULL;
 	start_g.length = 0;
@@ -81,7 +85,7 @@ int main(int argc, char *argv[])
 	directory = argv[1];
 
 	printf("Polling %s at start-up\n", directory);
-	if (dir_poll()) {
+	if (dir_poll(directory)) {
 		printf("Failed to poll %s\n", directory);
 		exit(EXIT_FAILURE);
 	}
@@ -123,22 +127,38 @@ void *poll_thread()
 	while(1) {
 		int result = 0;
 		pthread_mutex_lock(&file_mutex);
-		result = dir_poll();
+		result = dir_poll(directory);
 		pthread_mutex_unlock(&file_mutex);
 		if (result) break;
 		sleep(3600);
 	}
 
 	printf("Polling has encountered an error and has terminated\n");
+	return NULL;
 }
 
-int dir_poll()
+int dir_poll(const char *d_name)
 {
-	/*
-	 * TODO: something useful
-	 */
+	DIR *poll_dir;
+	struct dirent *entry;
+
 	pthread_mutex_lock(&ll_mutex);
 	clear_list();
+	poll_dir = opendir(d_name);
+	if(!poll_dir) {
+		printf("Failed to open directory for polling\n");
+		perror("dir_poll");
+		pthread_mutex_unlock(&ll_mutex);
+		return 1;
+	}
+
+	entry = readdir(poll_dir);
+	while(entry){
+		if(valid_filename(entry->d_name))
+			printf("Found valid file: %s\n", entry->d_name);
+		entry = readdir(poll_dir);
+	}
+	closedir(poll_dir);
 	pthread_mutex_unlock(&ll_mutex);
 	printf("dir_poll called\n");
 
@@ -282,8 +302,29 @@ void *tcp_server()
 			continue;
 		}
 		index +=4;
-		printf("Read %s\n", index);
+
+		pthread_mutex_lock(&ll_mutex);
+		gp = get_guideline_by_hash(index);
+		if (!gp) {
+			pthread_mutex_unlock(&ll_mutex);
+			printf("TCP client did not request a valid file\n");
+			/*
+			 * TODO: ? inform client
+			 */
+			close(client_fd);
+			continue;
+		}
 	}
+}
+
+/* Please lock ll_mutex before calling this */
+struct guideline *get_guideline_by_hash(const char *hash)
+{
+	struct guideline *gp = start_g.next;
+	while (gp != &end_g) {
+		if(!strncmp(hash, gp->hash, 32)) return gp;
+	}
+	return NULL;
 }
 
 /* Please lock ll_mutex before calling this */
@@ -327,4 +368,20 @@ int add_guideline(int version, void *blob, unsigned long length, char *hash)
 	p->prev = i->prev;
 	p->prev->next = p;
 	i->prev = p;
+}
+
+int valid_filename(const char *filename)
+{
+	char *index;
+	/*
+	 * filename should be 38 characters
+	 */
+	if(strlen(filename) != 38) return 0;
+
+	/*
+	 * The final 3 characters should be ".gz"
+	 */
+	index = strstr(filename, ".gz");
+	if (index != filename + 35) return 0;
+	return 1;
 }
