@@ -36,6 +36,7 @@
 #define UDP_RESP_SIZE 32
 #define TCP_READBUF_SIZE 37
 #define BLOB_CHUNK_SIZE 1024
+#define POLL_INTERVAL 300
 
 pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t ll_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -72,10 +73,6 @@ int main(int argc, char *argv[])
 
 
 	if (argc != 2) usage(argv[0]);
-
-	/*
-	 * TODO: implement check on valid directory passed as argv[1]
-	 */
 
 	/* Initialise linked list */
 	memset(&start_g, 0, sizeof(struct guideline));
@@ -140,7 +137,7 @@ void *poll_thread()
 		result = dir_poll(directory);
 		pthread_mutex_unlock(&file_mutex);
 		if (result) break;
-		sleep(3600);
+		sleep(POLL_INTERVAL);
 	}
 
 	printf("Polling has encountered an error and has terminated\n");
@@ -365,6 +362,8 @@ void *tcp_server()
 			continue;
 		}
 		index +=4;
+		
+		printf("Requested %s\n", index);
 
 		pthread_mutex_lock(&ll_mutex);
 		gp = get_guideline_by_hash(index);
@@ -377,6 +376,15 @@ void *tcp_server()
 			close(client_fd);
 			continue;
 		}
+
+		transmitted = write(client_fd, gp->blob, gp->length);
+		if (transmitted < gp->length) {
+			printf("Failed to send file\n");
+			if (transmitted < 0) perror("write");
+		}
+		pthread_mutex_unlock(&ll_mutex);
+		close(client_fd);
+
 	}
 }
 
@@ -386,6 +394,7 @@ struct guideline *get_guideline_by_hash(const char *hash)
 	struct guideline *gp = start_g.next;
 	while (gp != &end_g) {
 		if(!strncmp(hash, gp->hash, 32)) return gp;
+		gp = gp->next;
 	}
 	return NULL;
 }

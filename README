@@ -21,7 +21,7 @@ convention:
 ...where vvv is the zero-padded decimal version of the oldest client which can
 interpret the file and hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh is the MD5 hash of the
 file contents. If there are 2 or more files with the same vvv prefix stung will
-only recognize the first by alphanumeric order. As this may not be the newest
+only recognize the last by alphanumeric order. As this may not be the newest
 file, it is the responsibility of the scraper routine to clear up obsolete
 files.
 
