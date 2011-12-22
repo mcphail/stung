@@ -18,6 +18,8 @@
  */
 
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/time.h>
 #include <stdio.h>
 #include <netinet/in.h>
@@ -28,10 +30,12 @@
 #include <pthread.h>
 #include <string.h>
 #include <dirent.h>
+#include <limits.h>
 
 #define UDP_CHALL_SIZE 3
 #define UDP_RESP_SIZE 32
 #define TCP_READBUF_SIZE 37
+#define BLOB_CHUNK_SIZE 1024
 
 pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t ll_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -46,14 +50,20 @@ struct guideline {
 	struct guideline *prev;
 } start_g, end_g;
 
+struct info_from_filename {
+	int version;
+	char hash[33];
+};
+
 void usage(char *progname);
 int dir_poll(const char *d_name);
 void *udp_server();
 void *tcp_server();
 void *poll_thread();
 struct guideline *get_guideline_by_hash(const char *hash);
+void add_guideline(int version, void *blob, unsigned long length, char *hash);
 void clear_list();
-int valid_filename(const char* filename);
+struct info_from_filename *valid_filename(const char* filename);
 
 int main(int argc, char *argv[])
 {
@@ -137,10 +147,18 @@ void *poll_thread()
 	return NULL;
 }
 
+/* Please lock file_mutex if threads initialised */
 int dir_poll(const char *d_name)
 {
 	DIR *poll_dir;
 	struct dirent *entry;
+	char pathname[PATH_MAX + 1], rpathname[PATH_MAX + 1], *blobbuf;
+	char hash[33];
+	int file_d, version;
+	unsigned chunks;
+	ssize_t nread;
+	unsigned long total;
+	struct info_from_filename *info;
 
 	pthread_mutex_lock(&ll_mutex);
 	clear_list();
@@ -154,8 +172,57 @@ int dir_poll(const char *d_name)
 
 	entry = readdir(poll_dir);
 	while(entry){
-		if(valid_filename(entry->d_name))
+		if((info = valid_filename(entry->d_name))) {
 			printf("Found valid file: %s\n", entry->d_name);
+			version = info->version;
+			strncpy(hash, info->hash, 33);
+			free(info);
+			if((strlen(entry->d_name) + strlen(d_name)) >
+					(PATH_MAX - 1)) {
+				printf("Pathname too long\n");
+				closedir(poll_dir);
+				pthread_mutex_unlock(&ll_mutex);
+				return 1;
+			}
+
+			/* just in case... */
+			memset(pathname, 0, PATH_MAX + 1);
+			strcat(pathname, d_name);
+			strcat(pathname, "/");
+			strcat(pathname, entry->d_name);
+
+			if(!(realpath(pathname, rpathname))) {
+				printf("Could not resolve pathname\n");
+				closedir(poll_dir);
+				pthread_mutex_unlock(&ll_mutex);
+				return 1;
+			}
+
+			file_d = open(rpathname, O_RDONLY);
+			if (file_d < 1) {
+				printf("Could not open %s\n", rpathname);
+				perror("file_d");
+				closedir(poll_dir);
+				pthread_mutex_unlock(&ll_mutex);
+				return 1;
+			}
+
+			/* Read file contents into blob buffer */
+			chunks = 1;
+			blobbuf = malloc(BLOB_CHUNK_SIZE * chunks);
+			nread = 0;
+			total = 0;
+
+			for(;;) {
+				nread = read(file_d, blobbuf, BLOB_CHUNK_SIZE);
+				total += nread;
+				if (nread < BLOB_CHUNK_SIZE) break;
+				blobbuf = realloc(blobbuf,
+						BLOB_CHUNK_SIZE * ++chunks);
+			}
+			close(file_d);
+			add_guideline(version, blobbuf, total, hash);
+		}
 		entry = readdir(poll_dir);
 	}
 	closedir(poll_dir);
@@ -213,7 +280,7 @@ void *udp_server()
 
 		pthread_mutex_lock(&ll_mutex);
 		gp = start_g.next;
-		if (gp == &end_g) {
+/*		if (gp == &end_g) {
 			printf("Empty guideline list\n");
 			strncpy(resp, "No guidelines found",
 					UDP_RESP_SIZE +1);
@@ -224,6 +291,15 @@ void *udp_server()
 			gp = gp->next;
 			}
 			strncpy(resp, gp->hash, UDP_RESP_SIZE +1);
+		}*/
+		strncpy(resp, "No guidelines found", UDP_RESP_SIZE +1);
+		while(gp != &end_g) {
+			if ((gp->version <= result) &&
+					(gp->next->version > result)) {
+				strncpy(resp, gp->hash, UDP_RESP_SIZE +1);
+				break;
+			}
+			gp = gp->next;
 		}
 		pthread_mutex_unlock(&ll_mutex);
 
@@ -343,7 +419,7 @@ void clear_list()
 }
 
 /* Please lock ll_mutex before calling this */
-int add_guideline(int version, void *blob, unsigned long length, char *hash)
+void add_guideline(int version, void *blob, unsigned long length, char *hash)
 {
 	struct guideline *p,*i;
 
@@ -364,24 +440,52 @@ int add_guideline(int version, void *blob, unsigned long length, char *hash)
 	p->blob = blob;
 	p->length = length;
 	strncpy(p->hash, hash, 33);
-	p->next = i;
-	p->prev = i->prev;
-	p->prev->next = p;
-	i->prev = p;
+	p->prev = i;
+	p->next = i->next;
+	i->next = p;
+	p->next->prev = p;
 }
 
-int valid_filename(const char *filename)
+struct info_from_filename *valid_filename(const char *filename)
 {
-	char *index;
+	int i;
+	char *index, vers_string[UDP_CHALL_SIZE + 1];
+	struct info_from_filename *info;
+
 	/*
 	 * filename should be 38 characters
 	 */
-	if(strlen(filename) != 38) return 0;
+	if(strlen(filename) != 38) return NULL;
 
 	/*
 	 * The final 3 characters should be ".gz"
 	 */
 	index = strstr(filename, ".gz");
-	if (index != filename + 35) return 0;
-	return 1;
+	if (index != filename + 35) return NULL;
+
+	/*
+	 * The first 3 characters should be digits
+	 */
+	for(i = 0; i < 3; i++) {
+		if ((filename[i] < '0') || (filename[i] > '9')) return NULL;
+	}
+	strncpy(vers_string, filename, UDP_CHALL_SIZE);
+	vers_string[UDP_CHALL_SIZE] = 0;
+	info = malloc(sizeof(struct info_from_filename));
+	if (!info) return NULL;
+	info->version = atoi(vers_string);
+	
+	/*
+	 * The next 32 characters should be hex digits
+	 */
+	for(i = 3; i < 35; i++) {
+		if(((filename[i] < '0') || (filename[i] > '9')) &&
+				((filename[i] < 'a') || (filename[i] > 'f'))) {
+			free(info);
+			return NULL;
+		}
+	}
+	strcpy(info->hash, filename + UDP_CHALL_SIZE);
+
+	return info;
 }
