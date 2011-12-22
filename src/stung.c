@@ -227,7 +227,6 @@ int dir_poll(const char *d_name)
 	}
 	closedir(poll_dir);
 	pthread_mutex_unlock(&ll_mutex);
-	printf("dir_poll called\n");
 
 	return 0;
 }
@@ -280,18 +279,6 @@ void *udp_server()
 
 		pthread_mutex_lock(&ll_mutex);
 		gp = start_g.next;
-/*		if (gp == &end_g) {
-			printf("Empty guideline list\n");
-			strncpy(resp, "No guidelines found",
-					UDP_RESP_SIZE +1);
-		}
-		else {
-			while (!(gp->prev->version <= gp->version) &&
-				(gp->next->version > gp->version)) {
-			gp = gp->next;
-			}
-			strncpy(resp, gp->hash, UDP_RESP_SIZE +1);
-		}*/
 		strncpy(resp, "No guidelines found", UDP_RESP_SIZE +1);
 		while(gp != &end_g) {
 			if ((gp->version <= result) &&
@@ -416,6 +403,8 @@ void clear_list()
 			free(old_p);
 		}
 	}
+	start_g.next = &end_g;
+	end_g.prev = &start_g;
 }
 
 /* Please lock ll_mutex before calling this */
