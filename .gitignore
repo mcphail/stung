@@ -18,3 +18,5 @@
 .deps
 /src/Makefile
 /src/Makefile.in
+*.o
+/src/stung

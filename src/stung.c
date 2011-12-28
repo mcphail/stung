@@ -206,12 +206,14 @@ int dir_poll(const char *d_name)
 
 			/* Read file contents into blob buffer */
 			chunks = 1;
-			blobbuf = malloc(BLOB_CHUNK_SIZE * chunks);
+			blobbuf = malloc(BLOB_CHUNK_SIZE);
 			nread = 0;
 			total = 0;
 
 			for(;;) {
-				nread = read(file_d, blobbuf, BLOB_CHUNK_SIZE);
+				nread = read(file_d, 
+					blobbuf + (BLOB_CHUNK_SIZE * chunks),
+					BLOB_CHUNK_SIZE);
 				total += nread;
 				if (nread < BLOB_CHUNK_SIZE) break;
 				blobbuf = realloc(blobbuf,
