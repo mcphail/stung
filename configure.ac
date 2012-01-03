@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.65])
-AC_INIT([stung], [0.1.1], [neil@mcphail.homedns.org])
+AC_INIT([stung], [0.1.2], [neil@mcphail.homedns.org])
 AM_INIT_AUTOMAKE([foreign])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/stung.c])
