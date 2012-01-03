@@ -212,7 +212,7 @@ int dir_poll(const char *d_name)
 
 			for(;;) {
 				nread = read(file_d, 
-					blobbuf + (BLOB_CHUNK_SIZE * chunks),
+					blobbuf + (BLOB_CHUNK_SIZE*(chunks-1)),
 					BLOB_CHUNK_SIZE);
 				total += nread;
 				if (nread < BLOB_CHUNK_SIZE) break;
